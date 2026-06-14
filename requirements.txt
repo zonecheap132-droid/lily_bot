@@ -9,3 +9,5 @@ opencv-python-headless
 numpy
 SpeechRecognition
 pydub
+anthropic
+openai
