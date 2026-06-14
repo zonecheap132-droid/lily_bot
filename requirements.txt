@@ -1,0 +1,11 @@
+python-telegram-bot[job-queue]==20.7
+google-generativeai
+requests
+gtts
+yt-dlp
+pytz
+Pillow
+opencv-python-headless
+numpy
+SpeechRecognition
+pydub

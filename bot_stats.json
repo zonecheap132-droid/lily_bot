@@ -1,0 +1,47 @@
+{
+  "groups": {
+    "-1001330326659": {
+      "name": "Tamil Chatting\ud83c\udf24",
+      "username": "Tamil5",
+      "type": "supergroup",
+      "members": 938,
+      "added_date": "2026-06-14 15:53:44"
+    },
+    "-1001465163098": {
+      "name": "International speaking English group",
+      "username": "indianchatt",
+      "type": "supergroup",
+      "members": 596,
+      "added_date": "2026-06-14 17:13:23"
+    },
+    "-1001224311938": {
+      "name": "Angular support",
+      "username": "Angular5",
+      "type": "supergroup",
+      "members": 374,
+      "added_date": "2025-10-08 20:34:26"
+    },
+    "-1001465163098": {
+      "name": "International speaking English group",
+      "username": "indianchatt",
+      "type": "supergroup",
+      "members": 596,
+      "added_date": "2026-06-14 17:31:29"
+    }
+  },
+  "private_users": {
+    "620382392": {
+      "name": "\ud835\udc06\u00f9N spy",
+      "username": "Gun_spy",
+      "first_seen": "2025-11-28 22:12:00",
+      "last_active": "2025-11-28 22:16:06"
+    },
+    "7914927086": {
+      "name": "Dev",
+      "username": "fungunss",
+      "first_seen": "2025-10-08 20:26:37",
+      "last_active": "2025-10-08 20:26:37"
+    }
+  },
+  "total_messages": 296
+}
