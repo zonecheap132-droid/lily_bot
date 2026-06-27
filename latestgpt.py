@@ -3733,13 +3733,23 @@ async def check_user_profile_photo(update: Update, context: ContextTypes.DEFAULT
         print(f"Profile photo check error: {e}")
 
 async def scan_user_profile_photo(user, chat_id, context):
-    """Scan a user's profile photo and bio for NSFW/spam content"""
+    """Scan a user's profile photo, bio, and name for NSFW/spam content"""
     try:
         if user.id in _scanned_users:
             return False
         _scanned_users.add(user.id)
         if len(_scanned_users) > 1000:
             _scanned_users.clear()
+
+        # Check name for scam indicators
+        name = (user.first_name or "") + " " + (user.last_name or "")
+        scam_name_patterns = [r'\b(verified|paid|official|admin|support|moderator|staff|helper)\b', r'[\u2705\u2611\u2714\u2713]']  # checkmark emojis
+        for pattern in scam_name_patterns:
+            if re.search(pattern, name, re.IGNORECASE):
+                await context.bot.ban_chat_member(chat_id, user.id)
+                await context.bot.send_message(chat_id, f"\ud83d\udeab @{user.username or user.first_name} banned - scam name detected (fake verified/paid badge).")
+                print(f"\ud83d\udeab Banned {user.first_name} for scam name: {name}")
+                return True
 
         # Check bio/description for spam links
         try:
