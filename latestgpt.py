@@ -3609,21 +3609,30 @@ async def handle_media_moderation(update: Update, context: ContextTypes.DEFAULT_
     
     try:
         img_bytes = None
+        media_type = "unknown"
         
         # Get image bytes based on media type
         if update.message.photo:
+            media_type = "photo"
             photo = update.message.photo[-1]  # Largest size
             file = await context.bot.get_file(photo.file_id)
             img_bytes = await file.download_as_bytearray()
         elif update.message.animation:  # GIF
-            file = await context.bot.get_file(update.message.animation.thumbnail.file_id)
-            img_bytes = await file.download_as_bytearray()
-        elif update.message.sticker and update.message.sticker.thumbnail:
-            file = await context.bot.get_file(update.message.sticker.thumbnail.file_id)
-            img_bytes = await file.download_as_bytearray()
+            media_type = "gif"
+            if update.message.animation.thumbnail:
+                file = await context.bot.get_file(update.message.animation.thumbnail.file_id)
+                img_bytes = await file.download_as_bytearray()
+        elif update.message.sticker:
+            media_type = "sticker"
+            if update.message.sticker.thumbnail:
+                file = await context.bot.get_file(update.message.sticker.thumbnail.file_id)
+                img_bytes = await file.download_as_bytearray()
         
         if not img_bytes:
+            print(f"\u26a0\ufe0f [MEDIA] No image bytes for {media_type} from {update.message.from_user.first_name}")
             return
+        
+        print(f"\ud83d\udd0d [MEDIA] Scanning {media_type} from {update.message.from_user.first_name} ({len(img_bytes)} bytes)")
         
         import base64
         img_base64 = base64.b64encode(bytes(img_bytes)).decode()
@@ -3639,8 +3648,10 @@ async def handle_media_moderation(update: Update, context: ContextTypes.DEFAULT_
             "max_tokens": 5
         }
         response = requests.post(url, json=payload, headers=headers, timeout=15)
+        print(f"\ud83d\udcca [MEDIA] Groq response: {response.status_code}")
         if response.status_code == 200:
             result = response.json()['choices'][0]['message']['content'].strip().upper()
+            print(f"\ud83d\udcca [MEDIA] Result: {result}")
             if 'UNSAFE' in result:
                 chat_id = update.effective_chat.id
                 user = update.message.from_user
@@ -3651,11 +3662,15 @@ async def handle_media_moderation(update: Update, context: ContextTypes.DEFAULT_
                 ]
                 reply_markup = InlineKeyboardMarkup(keyboard)
                 await context.bot.send_message(chat_id, f"\ud83d\udeab @{user.username or user.first_name} banned - inappropriate media detected.", reply_markup=reply_markup)
-                print(f"\ud83d\udeab Banned {user.first_name} for NSFW media in group")
+                print(f"\ud83d\udeab [MEDIA] Banned {user.first_name} for NSFW {media_type}")
             else:
-                print(f"\u2705 Media OK from {update.message.from_user.first_name}")
+                print(f"\u2705 [MEDIA] {media_type} OK from {update.message.from_user.first_name}")
+        else:
+            print(f"\u274c [MEDIA] Groq API error: {response.status_code} - {response.text[:100]}")
     except Exception as e:
-        print(f"Media moderation error: {e}")
+        print(f"\u274c [MEDIA] Media moderation error: {e}")
+        import traceback
+        traceback.print_exc()
 
 # Handle voice messages
 async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
