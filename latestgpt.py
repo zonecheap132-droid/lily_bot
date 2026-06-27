@@ -3699,6 +3699,83 @@ async def detect_inappropriate_content(text: str) -> str:
     
     return None
 
+# Profile picture moderation using Groq Vision
+_scanned_users = set()
+
+async def check_user_profile_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Check new member's profile picture for inappropriate content"""
+    try:
+        for member in update.message.new_chat_members:
+            if member.is_bot:
+                continue
+            await scan_user_profile_photo(member, update.effective_chat.id, context)
+    except Exception as e:
+        print(f"Profile photo check error: {e}")
+
+async def scan_user_profile_photo(user, chat_id, context):
+    """Scan a user's profile photo and bio for NSFW/spam content"""
+    try:
+        if user.id in _scanned_users:
+            return False
+        _scanned_users.add(user.id)
+        if len(_scanned_users) > 1000:
+            _scanned_users.clear()
+
+        # Check bio/description for spam links
+        try:
+            chat = await context.bot.get_chat(user.id)
+            bio = chat.bio or ""
+            if bio:
+                # Check bio with AI
+                ai_result = await check_message_with_ai(bio)
+                if ai_result['action'] == 'ban':
+                    await context.bot.ban_chat_member(chat_id, user.id)
+                    await context.bot.send_message(chat_id, f"\ud83d\udeab @{user.username or user.first_name} banned - inappropriate bio detected.")
+                    print(f"\ud83d\udeab Banned {user.first_name} for bad bio: {bio[:50]}")
+                    return True
+                elif ai_result['action'] == 'mute':
+                    await context.bot.ban_chat_member(chat_id, user.id)
+                    await context.bot.send_message(chat_id, f"\ud83d\udeab @{user.username or user.first_name} banned - spam bio detected.")
+                    print(f"\ud83d\udeab Banned {user.first_name} for spam bio: {bio[:50]}")
+                    return True
+        except Exception as e:
+            print(f"Bio check skipped: {e}")
+
+        # Check profile photo
+        photos = await context.bot.get_user_profile_photos(user.id, limit=1)
+        if not photos.photos:
+            return False
+        photo = photos.photos[0][-1]
+        file = await context.bot.get_file(photo.file_id)
+        img_bytes = await file.download_as_bytearray()
+
+        import base64
+        img_base64 = base64.b64encode(bytes(img_bytes)).decode()
+
+        url = "https://api.groq.com/openai/v1/chat/completions"
+        headers = {"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"}
+        payload = {
+            "model": "meta-llama/llama-4-scout-17b-16e-instruct",
+            "messages": [{"role": "user", "content": [
+                {"type": "text", "text": "Is this profile picture appropriate? Reply ONLY one word: SAFE or UNSAFE. UNSAFE means nudity, porn, adult, sexual, or extremely violent content."},
+                {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{img_base64}"}}
+            ]}],
+            "max_tokens": 5
+        }
+        response = requests.post(url, json=payload, headers=headers, timeout=15)
+        if response.status_code == 200:
+            result = response.json()['choices'][0]['message']['content'].strip().upper()
+            if 'UNSAFE' in result:
+                await context.bot.ban_chat_member(chat_id, user.id)
+                await context.bot.send_message(chat_id, f"\ud83d\udeab @{user.username or user.first_name} banned - inappropriate profile picture.")
+                print(f"\ud83d\udeab Banned {user.first_name} for NSFW profile picture")
+                return True
+            else:
+                print(f"\u2705 Profile photo OK for {user.first_name}")
+    except Exception as e:
+        print(f"Profile photo scan error: {e}")
+    return False
+
 # Handle text messages
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE, text: str = None):
     """Process messages (text and converted voice), moderate content, and generate AI responses."""
@@ -3707,6 +3784,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE, tex
     user_id = update.message.from_user.id
     chat_id = update.message.chat.id
     username = update.message.from_user.username
+
+    # Scan profile photo for existing users (once per user)
+    if message_type in ['group', 'supergroup']:
+        banned = await scan_user_profile_photo(update.message.from_user, chat_id, context)
+        if banned:
+            return
 
     # Content Moderation (only for groups)
     if message_type in ['group', 'supergroup']:
@@ -4877,6 +4960,22 @@ async def kick_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         await update.message.reply_text(f"❌ Error: {e}")
 
+async def scan_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Admin command to scan a user's profile photo"""
+    user_id = update.effective_user.id
+    if user_id not in ADMIN_IDS:
+        await update.message.reply_text("❌ Admin only command")
+        return
+    if not update.message.reply_to_message:
+        await update.message.reply_text("❌ Reply to a user's message to scan their profile photo")
+        return
+    target = update.message.reply_to_message.from_user
+    _scanned_users.discard(target.id)  # Force rescan
+    await update.message.reply_text(f"🔍 Scanning @{target.username or target.first_name}'s profile photo...")
+    banned = await scan_user_profile_photo(target, update.effective_chat.id, context)
+    if not banned:
+        await update.message.reply_text(f"✅ @{target.username or target.first_name}'s profile photo is clean.")
+
 async def unban_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     print(f"🔐 Unban command - User ID: {user_id}, Admin IDs: {ADMIN_IDS}, Is Admin: {user_id in ADMIN_IDS}")
@@ -5042,6 +5141,7 @@ def main():
     app.add_handler(CommandHandler('mute', mute_command))
     app.add_handler(CommandHandler('warn', warn_command))
     app.add_handler(CommandHandler('kick', kick_command))
+    app.add_handler(CommandHandler('scan', scan_command))
     app.add_handler(CommandHandler('unban', unban_command))
     app.add_handler(CommandHandler('unmute', unmute_command))
 
@@ -5067,6 +5167,7 @@ def main():
     # Message handlers
     app.add_handler(MessageHandler(filters.TEXT, handle_message))
     app.add_handler(MessageHandler(filters.VOICE, handle_voice))
+    app.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, check_user_profile_photo))
 
     # Poll answer handler
     from telegram.ext import PollAnswerHandler
