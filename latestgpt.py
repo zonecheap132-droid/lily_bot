@@ -1028,19 +1028,20 @@ async def send_quiz_question(context, question_num):
 
         prompt = f"""Generate quiz question {question_num}/5 for {category}.
 
-Format EXACTLY like this:
-Q: What is 2+2? | 2+2 என்ன?
-A) 3 | மூன்று
-B) 4 | நான்கு
-C) 5 | ஐந்து
-D) 6 | ஆறு
-Answer: B
+Format EXACTLY:
+Q: [English question] | [Tamil question]
+A) [English] | [Tamil]
+B) [English] | [Tamil]
+C) [English] | [Tamil]
+D) [English] | [Tamil]
+Answer: [A/B/C/D]
 
 Rules:
-- Question under 250 chars
-- Each option under 80 chars
-- Must have A, B, C, D options
-- Answer must be A, B, C, or D"""
+- Question MUST be under 150 chars total (both languages combined)
+- Each option MUST be under 70 chars total (both languages combined)
+- Keep it short and concise
+- Must be factually correct
+- Only one correct answer"""
 
         response = get_ai_response(prompt, chat_session, ai_type)
         print(f"AI Quiz Response: {response}")
@@ -2115,10 +2116,10 @@ def initialize_ai():
         print(f"🔧 Testing Groq connection...")
         url = "https://api.groq.com/openai/v1/chat/completions"
         headers = {"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"}
-        payload = {"model": "llama-3.1-8b-instant", "messages": [{"role": "user", "content": "test"}], "max_tokens": 5}
+        payload = {"model": "llama-3.1-70b-versatile", "messages": [{"role": "user", "content": "test"}], "max_tokens": 5}
         response = requests.post(url, json=payload, headers=headers, timeout=10)
         if response.status_code == 200:
-            print(f"✅ Groq (Llama 3.1) initialized successfully!")
+            print(f"✅ Groq (Llama 3.1 70B) initialized successfully!")
             return None, "groq"
         else:
             print(f"❌ Groq failed: {response.status_code}")
@@ -2166,7 +2167,7 @@ def get_ai_response(text, chat_session, ai_type):
         url = "https://api.groq.com/openai/v1/chat/completions"
         headers = {"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"}
         payload = {
-            "model": "llama-3.1-8b-instant",
+            "model": "llama-3.1-70b-versatile",
             "messages": [{"role": "user", "content": text}],
             "max_tokens": 1000,
             "temperature": 0.7
@@ -4924,10 +4925,10 @@ def test_all_connections_on_startup():
     try:
         url = "https://api.groq.com/openai/v1/chat/completions"
         headers = {"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"}
-        payload = {"model": "llama-3.1-8b-instant", "messages": [{"role": "user", "content": "test"}], "max_tokens": 5}
+        payload = {"model": "llama-3.1-70b-versatile", "messages": [{"role": "user", "content": "test"}], "max_tokens": 5}
         response = requests.post(url, json=payload, headers=headers, timeout=10)
         if response.status_code == 200:
-            print(f"✅ Groq (Llama 3.1): Working")
+            print(f"✅ Groq (Llama 3.1 70B): Working")
         else:
             print(f"❌ Groq: Failed ({response.status_code})")
     except Exception as e:
