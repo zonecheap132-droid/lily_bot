@@ -5,7 +5,7 @@ import google.generativeai as genai
 import requests
 from typing import Final
 from telegram import Update, ChatPermissions, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes, CallbackQueryHandler
+from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes, CallbackQueryHandler, ChatMemberHandler
 from gtts import gTTS
 from datetime import timedelta, datetime, time
 import anthropic
@@ -3604,6 +3604,10 @@ async def contains_spam_links(text: str, update: Update, context) -> bool:
 # Handle media messages (photos, GIFs, stickers) for NSFW detection
 async def handle_media_moderation(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Scan photos, GIFs, and stickers for inappropriate content in groups"""
+    # Log GIF file_id for admin to capture
+    if update.message.animation:
+        print(f"GIF file_id: {update.message.animation.file_id}")
+    
     if update.message.chat.type not in ['group', 'supergroup']:
         return
     
@@ -3778,15 +3782,77 @@ async def detect_inappropriate_content(text: str) -> str:
 # Profile picture moderation using Groq Vision
 _scanned_users = set()
 
+# Track welcomed users to avoid repeated welcome messages
+_welcomed_users = set()
+
+async def track_chat_member(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Track when user joins via ChatMemberHandler (works even without join message)"""
+    try:
+        result = update.chat_member
+        if not result:
+            return
+        old_status = result.old_chat_member.status
+        new_status = result.new_chat_member.status
+        user = result.new_chat_member.user
+        chat_id = update.effective_chat.id
+
+        # User joined (was not member, now is member)
+        if old_status in ['left', 'kicked'] and new_status in ['member', 'restricted']:
+            if user.is_bot:
+                return
+            print(f"👤 [JOIN] New member detected: {user.first_name} (@{user.username})")
+            # Scan profile
+            banned = await scan_user_profile_photo(user, chat_id, context)
+            print(f"👤 [JOIN] Scan result: banned={banned}")
+            # Welcome if not banned
+            if not banned and user.id not in _welcomed_users:
+                _welcomed_users.add(user.id)
+                if len(_welcomed_users) > 5000:
+                    _welcomed_users.clear()
+                # Detect language based on group
+                try:
+                    chat_info = await context.bot.get_chat(chat_id)
+                    chat_username = (chat_info.username or "").lower()
+                except:
+                    chat_username = ""
+                
+                if 'indianchatt' in chat_username or 'digitalstudioo' in chat_username:
+                    # Hindi welcome
+                    welcome_messages = [
+                        f"🙏 नमस्ते @{user.username or user.first_name}!\n\n💐 हमारे ग्रुप में आपका स्वागत है! हम चाहते हैं कि आप यहाँ खुश रहें.\n\n🌟 ग्रुप नियमों का पालन करें, सबके साथ मिलजुल कर रहें! 🎉",
+                        f"🌺 प्यारे @{user.username or user.first_name}!\n\n🤗 हमारे परिवार में शामिल होने के लिए धन्यवाद! आपकी मौजूदगी हमारे लिए बहुत महत्वपूर्ण है.\n\n💫 सम्मान से बात करें, खुश रहें! 🎊",
+                        f"💐 स्वागत है @{user.username or user.first_name}!\n\n🌹 आपसे मिलकर खुशी हुई! यह एक अच्छा परिवार जैसा ग्रुप है.\n\n✨ सबका सम्मान करें, अच्छा समय बिताएं! 🙏",
+                    ]
+                else:
+                    # Tamil welcome (default)
+                    welcome_messages = [
+                        f"🙏 வணக்கம் @{user.username or user.first_name}!\n\n💐 எங்கள் குழுவிற்கு வரவேற்கிறோம்! நீங்கள் இங்கு மகிழ்ச்சியாக இருக்க வேண்டும் என்று விரும்புகிறோம்.\n\n🌟 குழு விதிகளை பின்பற்றி, அனைவருடனும் நட்புடன் பழகுங்கள்! 🎉",
+                        f"🌺 அன்பான வரவேற்பு @{user.username or user.first_name}!\n\n🤗 நம் குடும்பத்தில் இணைந்ததற்கு மிக்க நன்றி! உங்கள் பங்களிப்பு எங்களுக்கு மிகவும் முக்கியம்.\n\n💫 மரியாதையுடன் உரையாடுங்கள், மகிழ்ச்சியாக இருங்கள்! 🎊",
+                        f"💐 இனிய வரவேற்பு @{user.username or user.first_name}!\n\n🌹 உங்களை எங்கள் குழுவில் சந்திப்பதில் மகிழ்ச்சி! இது ஒரு நல்ல குடும்பம் போன்ற குழு.\n\n✨ அனைவரையும் மதித்து, அழகான நேரத்தை கழியுங்கள்! 🙏",
+                    ]
+                welcome = random.choice(welcome_messages)
+                # Send with GIF if set, otherwise text only
+                try:
+                    if welcome_gif_id:
+                        await context.bot.send_animation(chat_id, animation=welcome_gif_id, caption=welcome)
+                    else:
+                        await context.bot.send_message(chat_id, welcome)
+                except Exception:
+                    await context.bot.send_message(chat_id, welcome)
+                print(f"✅ [JOIN] Welcome sent to {user.first_name}")
+    except Exception as e:
+        print(f"❌ [JOIN] ChatMember error: {e}")
+
 async def check_user_profile_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Check new member's profile picture for inappropriate content"""
     try:
         for member in update.message.new_chat_members:
             if member.is_bot:
                 continue
+            print(f"👤 [JOIN] New member (via message): {member.first_name} (@{member.username})")
             await scan_user_profile_photo(member, update.effective_chat.id, context)
     except Exception as e:
-        print(f"Profile photo check error: {e}")
+        print(f"❌ [JOIN] Error: {e}")
 
 async def scan_user_profile_photo(user, chat_id, context):
     """Scan a user's profile photo, bio, and name for NSFW/spam content"""
@@ -5067,6 +5133,32 @@ async def kick_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         await update.message.reply_text(f"❌ Error: {e}")
 
+# Welcome GIF storage
+welcome_gif_id = None
+try:
+    with open('welcome_gif.txt', 'r') as f:
+        welcome_gif_id = f.read().strip()
+        if welcome_gif_id:
+            print(f"✅ Welcome GIF loaded: {welcome_gif_id[:20]}...")
+except FileNotFoundError:
+    pass
+
+async def setwelcome_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Set welcome GIF by replying to a GIF with /setwelcome"""
+    user_id = update.effective_user.id
+    if user_id not in ADMIN_IDS:
+        await update.message.reply_text("❌ Admin only command")
+        return
+    if not update.message.reply_to_message or not update.message.reply_to_message.animation:
+        await update.message.reply_text("❌ Reply to a GIF with /setwelcome to set it as welcome GIF")
+        return
+    global welcome_gif_id
+    welcome_gif_id = update.message.reply_to_message.animation.file_id
+    # Save to file for persistence
+    with open('welcome_gif.txt', 'w') as f:
+        f.write(welcome_gif_id)
+    await update.message.reply_text(f"✅ Welcome GIF set! ID: {welcome_gif_id[:20]}...")
+
 async def scan_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Admin command to scan a user's profile photo"""
     user_id = update.effective_user.id
@@ -5283,6 +5375,7 @@ def main():
     app.add_handler(CommandHandler('warn', warn_command))
     app.add_handler(CommandHandler('kick', kick_command))
     app.add_handler(CommandHandler('scan', scan_command))
+    app.add_handler(CommandHandler('setwelcome', setwelcome_command))
     app.add_handler(CommandHandler('info', info_command))
     app.add_handler(CommandHandler('unban', unban_command))
     app.add_handler(CommandHandler('unmute', unmute_command))
@@ -5311,6 +5404,7 @@ def main():
     app.add_handler(MessageHandler(filters.VOICE, handle_voice))
     app.add_handler(MessageHandler(filters.PHOTO | filters.ANIMATION | filters.Sticker.ALL, handle_media_moderation))
     app.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, check_user_profile_photo))
+    app.add_handler(ChatMemberHandler(track_chat_member, ChatMemberHandler.CHAT_MEMBER))
 
     # Poll answer handler
     from telegram.ext import PollAnswerHandler
@@ -5328,7 +5422,7 @@ def main():
 
     # Run with PythonAnywhere-compatible settings
     try:
-        app.run_polling(poll_interval=5, timeout=60, bootstrap_retries=10, drop_pending_updates=True)
+        app.run_polling(poll_interval=5, timeout=60, bootstrap_retries=10, drop_pending_updates=True, allowed_updates=['message', 'callback_query', 'poll_answer', 'chat_member'])
     except Exception as e:
         print(f"❌ Connection failed: {e}")
         print("💡 PythonAnywhere solutions:")
