@@ -2116,7 +2116,7 @@ def initialize_ai():
         print(f"🔧 Testing Groq connection...")
         url = "https://api.groq.com/openai/v1/chat/completions"
         headers = {"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"}
-        payload = {"model": "llama-3.1-70b-versatile", "messages": [{"role": "user", "content": "test"}], "max_tokens": 5}
+        payload = {"model": "llama-3.3-70b-versatile", "messages": [{"role": "user", "content": "test"}], "max_tokens": 5}
         response = requests.post(url, json=payload, headers=headers, timeout=10)
         if response.status_code == 200:
             print(f"✅ Groq (Llama 3.1 70B) initialized successfully!")
@@ -2167,7 +2167,7 @@ def get_ai_response(text, chat_session, ai_type):
         url = "https://api.groq.com/openai/v1/chat/completions"
         headers = {"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"}
         payload = {
-            "model": "llama-3.1-70b-versatile",
+            "model": "llama-3.3-70b-versatile",
             "messages": [{"role": "user", "content": text}],
             "max_tokens": 1000,
             "temperature": 0.7
@@ -4925,7 +4925,7 @@ def test_all_connections_on_startup():
     try:
         url = "https://api.groq.com/openai/v1/chat/completions"
         headers = {"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"}
-        payload = {"model": "llama-3.1-70b-versatile", "messages": [{"role": "user", "content": "test"}], "max_tokens": 5}
+        payload = {"model": "llama-3.3-70b-versatile", "messages": [{"role": "user", "content": "test"}], "max_tokens": 5}
         response = requests.post(url, json=payload, headers=headers, timeout=10)
         if response.status_code == 200:
             print(f"✅ Groq (Llama 3.1 70B): Working")
