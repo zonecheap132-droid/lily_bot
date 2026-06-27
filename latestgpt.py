@@ -3743,9 +3743,19 @@ async def scan_user_profile_photo(user, chat_id, context):
 
         # Check name for scam indicators
         name = (user.first_name or "") + " " + (user.last_name or "")
-        scam_name_patterns = [r'\b(verified|paid|official|admin|support|moderator|staff|helper)\b', r'[\u2705\u2611\u2714\u2713]']  # checkmark emojis
-        for pattern in scam_name_patterns:
-            if re.search(pattern, name, re.IGNORECASE):
+        # Normalize unicode to catch fancy text
+        import unicodedata
+        name_normalized = unicodedata.normalize('NFKD', name).encode('ascii', 'ignore').decode('ascii').lower()
+        name_normalized = re.sub(r'[^a-z]', '', name_normalized)
+        # Extra: map small caps and special chars
+        smallcaps_map = str.maketrans('ᴀʙᴄᴅᴇꜰɢʜɪᴊᴋʟᴍɴᴏᴘǫʀꜱᴛᴜᴠᴡxʏᴢ', 'abcdefghijklmnopqrstuvwxyz')
+        name_extra = name.lower().translate(smallcaps_map)
+        name_extra = re.sub(r'[^a-z]', '', name_extra)
+        combined_name = name_normalized + name_extra
+        scam_words = ['verified', 'paid', 'official', 'admin', 'support', 'moderator', 'staff', 'helper']
+        checkmark_pattern = r'[\u2705\u2611\u2714\u2713\u2b50]'
+        is_scam = any(word in combined_name for word in scam_words) or re.search(checkmark_pattern, name)
+        if is_scam:
                 await context.bot.ban_chat_member(chat_id, user.id)
                 await context.bot.send_message(chat_id, f"\ud83d\udeab @{user.username or user.first_name} banned - scam name detected (fake verified/paid badge).")
                 print(f"\ud83d\udeab Banned {user.first_name} for scam name: {name}")
