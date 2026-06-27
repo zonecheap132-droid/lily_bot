@@ -5009,6 +5009,40 @@ async def scan_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not banned:
         await update.message.reply_text(f"✅ @{target.username or target.first_name}'s profile photo is clean.")
 
+async def info_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Get user info by replying to their message"""
+    if not update.message.reply_to_message:
+        await update.message.reply_text("❌ Reply to a user's message to get their info")
+        return
+    user = update.message.reply_to_message.from_user
+    
+    # Get bio
+    bio = ""
+    try:
+        chat = await context.bot.get_chat(user.id)
+        bio = chat.bio or "No bio"
+    except:
+        bio = "Unable to fetch"
+    
+    # Get profile photo count
+    try:
+        photos = await context.bot.get_user_profile_photos(user.id)
+        photo_count = photos.total_count
+    except:
+        photo_count = 0
+    
+    info = (
+        f"👤 **User Info**\n\n"
+        f"🆔 ID: `{user.id}`\n"
+        f"📛 Name: {user.first_name} {user.last_name or ''}\n"
+        f"👤 Username: @{user.username or 'None'}\n"
+        f"🤖 Bot: {'Yes' if user.is_bot else 'No'}\n"
+        f"📝 Bio: {bio}\n"
+        f"🖼️ Photos: {photo_count}\n"
+        f"🔗 Link: [Profile](tg://user?id={user.id})"
+    )
+    await update.message.reply_text(info, parse_mode='Markdown')
+
 async def unban_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     print(f"🔐 Unban command - User ID: {user_id}, Admin IDs: {ADMIN_IDS}, Is Admin: {user_id in ADMIN_IDS}")
@@ -5175,6 +5209,7 @@ def main():
     app.add_handler(CommandHandler('warn', warn_command))
     app.add_handler(CommandHandler('kick', kick_command))
     app.add_handler(CommandHandler('scan', scan_command))
+    app.add_handler(CommandHandler('info', info_command))
     app.add_handler(CommandHandler('unban', unban_command))
     app.add_handler(CommandHandler('unmute', unmute_command))
 
