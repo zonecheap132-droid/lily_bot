@@ -3601,6 +3601,58 @@ async def contains_spam_links(text: str, update: Update, context) -> bool:
                     print(f"Allowed user/bot mention: {mention}")
     return False
 
+# Handle media messages (photos, GIFs, stickers) for NSFW detection
+async def handle_media_moderation(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Scan photos, GIFs, and stickers for inappropriate content in groups"""
+    if update.message.chat.type not in ['group', 'supergroup']:
+        return
+    
+    try:
+        img_bytes = None
+        
+        # Get image bytes based on media type
+        if update.message.photo:
+            photo = update.message.photo[-1]  # Largest size
+            file = await context.bot.get_file(photo.file_id)
+            img_bytes = await file.download_as_bytearray()
+        elif update.message.animation:  # GIF
+            file = await context.bot.get_file(update.message.animation.thumbnail.file_id)
+            img_bytes = await file.download_as_bytearray()
+        elif update.message.sticker and update.message.sticker.thumbnail:
+            file = await context.bot.get_file(update.message.sticker.thumbnail.file_id)
+            img_bytes = await file.download_as_bytearray()
+        
+        if not img_bytes:
+            return
+        
+        import base64
+        img_base64 = base64.b64encode(bytes(img_bytes)).decode()
+        
+        url = "https://api.groq.com/openai/v1/chat/completions"
+        headers = {"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"}
+        payload = {
+            "model": "meta-llama/llama-4-scout-17b-16e-instruct",
+            "messages": [{"role": "user", "content": [
+                {"type": "text", "text": "Is this image appropriate for a family-friendly group? Reply ONLY one word: SAFE or UNSAFE. UNSAFE means: nudity, porn, sexual content, cleavage, bra/panty/bikini/lingerie, exposed body parts (hips/butt/chest), suggestive poses, weapons, guns, knives, drugs, crypto/forex promotions, spam text, QR codes, gore, or violence."},
+                {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{img_base64}"}}
+            ]}],
+            "max_tokens": 5
+        }
+        response = requests.post(url, json=payload, headers=headers, timeout=15)
+        if response.status_code == 200:
+            result = response.json()['choices'][0]['message']['content'].strip().upper()
+            if 'UNSAFE' in result:
+                chat_id = update.effective_chat.id
+                user = update.message.from_user
+                await context.bot.delete_message(chat_id, update.message.message_id)
+                await context.bot.ban_chat_member(chat_id, user.id)
+                await context.bot.send_message(chat_id, f"\ud83d\udeab @{user.username or user.first_name} banned - inappropriate media detected.")
+                print(f"\ud83d\udeab Banned {user.first_name} for NSFW media in group")
+            else:
+                print(f"\u2705 Media OK from {update.message.from_user.first_name}")
+    except Exception as e:
+        print(f"Media moderation error: {e}")
+
 # Handle voice messages
 async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     print(f"update Voice Text: {update}")
@@ -5245,6 +5297,7 @@ def main():
     # Message handlers
     app.add_handler(MessageHandler(filters.TEXT, handle_message))
     app.add_handler(MessageHandler(filters.VOICE, handle_voice))
+    app.add_handler(MessageHandler(filters.PHOTO | filters.ANIMATION | filters.Sticker.ALL, handle_media_moderation))
     app.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, check_user_profile_photo))
 
     # Poll answer handler
