@@ -1560,10 +1560,30 @@ news_history = {lang: set() for lang in LANGUAGE_CHANNELS.keys()}
 
 # Poem topics for hourly posts (same 24 topics for all languages)
 POEM_TOPICS = [
-    "Life", "Hope", "Nature", "Hard work", "Education", "Bravery",
-    "Family", "Friendship", "Humanity", "Mother", "Motherland", "Love",
-    "God", "Law", "Entertainment", "Technology", "Science", "Culture",
-    "Tradition", "Success", "Wisdom", "Peace", "Health", "Courage"
+    "வாழ்க்கை (Life) | जीवन",
+    "நம்பிக்கை (Hope) | आशा",
+    "இயற்கை (Nature) | प्रकृति",
+    "உழைப்பு (Hard work) | मेहनत",
+    "கல்வி (Education) | शिक्षा",
+    "வீரம் (Bravery) | वीरता",
+    "குடும்பம் (Family) | परिवार",
+    "நட்பு (Friendship) | दोस्ती",
+    "மனிதநேயம் (Humanity) | मानवता",
+    "தாய் (Mother) | माँ",
+    "தாய்நாடு (Motherland) | मातृभूमि",
+    "காதல் (Love) | प्रेम",
+    "கடவுள் (God) | भगवान",
+    "சட்டம் (Law) | कानून",
+    "பொழுதுபோக்கு (Entertainment) | मनोरंजन",
+    "தொழில்நுட்பம் (Technology) | तकनीक",
+    "அறிவியல் (Science) | विज्ञान",
+    "பண்பாடு (Culture) | संस्कृति",
+    "மரபு (Tradition) | परंपरा",
+    "வெற்றி (Success) | सफलता",
+    "ஞானம் (Wisdom) | ज्ञान",
+    "அமைதி (Peace) | शांति",
+    "உடல்நலம் (Health) | स्वास्थ्य",
+    "தைரியம் (Courage) | साहस"
 ]
 
 # News categories for daily news
@@ -4484,10 +4504,13 @@ async def send_poem_to_channel(context, language, topic, poem_text, current_hour
     print(f"🔙 [POEM SEND] generate_contextual_image() returned: {content_image is not None}")
 
     # Format poem message based on language
+    topic_tamil = topic.split('(')[0].strip()
+    topic_english = topic.split('(')[1].split(')')[0].strip() if '(' in topic else topic
+    topic_hindi = topic.split('|')[-1].strip() if '|' in topic else topic_english
     if language == "tamil":
-        message = f"📝 **தமிழ் கவிதை - {topic}** 📝\n\n{poem_text}\n\n@tamil5 @tamil_digital\n\n💫 Stay inspired! | உத்வேகம் பெறுங்கள்!"
+        message = f"📝 **தமிழ் கவிதை - {topic_tamil} ({topic_english})** 📝\n\n{poem_text}\n\n@tamil5 @tamil_digital\n\n💫 Stay inspired! | உத்வேகம் பெறுங்கள்!"
     elif language == "hindi":
-        message = f"📝 **हिंदी कविता - {topic}** 📝\n\n{poem_text}\n\n@indianchatt @digitalstudioo\n\n💫 Stay inspired! | प्रेरित रहें!"
+        message = f"📝 **हिंदी कविता - {topic_hindi} ({topic_english})** 📝\n\n{poem_text}\n\n@indianchatt @digitalstudioo\n\n💫 Stay inspired! | प्रेरित रहें!"
 
     print(f"📝 [POEM SEND] Formatted message length: {len(message)} chars")
 
