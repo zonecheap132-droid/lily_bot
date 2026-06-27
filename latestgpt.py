@@ -3757,7 +3757,7 @@ async def scan_user_profile_photo(user, chat_id, context):
         payload = {
             "model": "meta-llama/llama-4-scout-17b-16e-instruct",
             "messages": [{"role": "user", "content": [
-                {"type": "text", "text": "Is this profile picture appropriate? Reply ONLY one word: SAFE or UNSAFE. UNSAFE means nudity, porn, adult, sexual, or extremely violent content."},
+                {"type": "text", "text": "Is this profile picture appropriate for a family-friendly group? Reply ONLY one word: SAFE or UNSAFE. UNSAFE means: nudity, porn, sexual content, cleavage, bra/panty/bikini/lingerie, exposed body parts (hips/butt/chest), suggestive poses, weapons, guns, knives, drugs, crypto/forex promotions, spam text, QR codes, gore, or violence."},
                 {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{img_base64}"}}
             ]}],
             "max_tokens": 5
