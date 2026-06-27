@@ -3646,7 +3646,11 @@ async def handle_media_moderation(update: Update, context: ContextTypes.DEFAULT_
                 user = update.message.from_user
                 await context.bot.delete_message(chat_id, update.message.message_id)
                 await context.bot.ban_chat_member(chat_id, user.id)
-                await context.bot.send_message(chat_id, f"\ud83d\udeab @{user.username or user.first_name} banned - inappropriate media detected.")
+                keyboard = [
+                    [InlineKeyboardButton("\ud83d\udd13 Unban (Admins Only)", callback_data=f"unban_{user.id}_{user.username or user.first_name}")]
+                ]
+                reply_markup = InlineKeyboardMarkup(keyboard)
+                await context.bot.send_message(chat_id, f"\ud83d\udeab @{user.username or user.first_name} banned - inappropriate media detected.", reply_markup=reply_markup)
                 print(f"\ud83d\udeab Banned {user.first_name} for NSFW media in group")
             else:
                 print(f"\u2705 Media OK from {update.message.from_user.first_name}")
@@ -3809,7 +3813,9 @@ async def scan_user_profile_photo(user, chat_id, context):
         is_scam = any(word in combined_name for word in scam_words) or re.search(checkmark_pattern, name)
         if is_scam:
                 await context.bot.ban_chat_member(chat_id, user.id)
-                await context.bot.send_message(chat_id, f"\ud83d\udeab @{user.username or user.first_name} banned - scam name detected (fake verified/paid badge).")
+                keyboard = [[InlineKeyboardButton("🔓 Unban (Admins Only)", callback_data=f"unban_{user.id}_{user.username or user.first_name}")]]
+                reply_markup = InlineKeyboardMarkup(keyboard)
+                await context.bot.send_message(chat_id, f"🚫 @{user.username or user.first_name} banned - scam name detected (fake verified/paid badge).", reply_markup=reply_markup)
                 print(f"\ud83d\udeab Banned {user.first_name} for scam name: {name}")
                 return True
 
@@ -3822,12 +3828,16 @@ async def scan_user_profile_photo(user, chat_id, context):
                 ai_result = await check_message_with_ai(bio)
                 if ai_result['action'] == 'ban':
                     await context.bot.ban_chat_member(chat_id, user.id)
-                    await context.bot.send_message(chat_id, f"\ud83d\udeab @{user.username or user.first_name} banned - inappropriate bio detected.")
+                    keyboard = [[InlineKeyboardButton("\ud83d\udd13 Unban (Admins Only)", callback_data=f"unban_{user.id}_{user.username or user.first_name}")]]
+                    reply_markup = InlineKeyboardMarkup(keyboard)
+                    await context.bot.send_message(chat_id, f"\ud83d\udeab @{user.username or user.first_name} banned - inappropriate bio detected.", reply_markup=reply_markup)
                     print(f"\ud83d\udeab Banned {user.first_name} for bad bio: {bio[:50]}")
                     return True
                 elif ai_result['action'] == 'mute':
                     await context.bot.ban_chat_member(chat_id, user.id)
-                    await context.bot.send_message(chat_id, f"\ud83d\udeab @{user.username or user.first_name} banned - spam bio detected.")
+                    keyboard = [[InlineKeyboardButton("\ud83d\udd13 Unban (Admins Only)", callback_data=f"unban_{user.id}_{user.username or user.first_name}")]]
+                    reply_markup = InlineKeyboardMarkup(keyboard)
+                    await context.bot.send_message(chat_id, f"\ud83d\udeab @{user.username or user.first_name} banned - spam bio detected.", reply_markup=reply_markup)
                     print(f"\ud83d\udeab Banned {user.first_name} for spam bio: {bio[:50]}")
                     return True
         except Exception as e:
@@ -3859,7 +3869,9 @@ async def scan_user_profile_photo(user, chat_id, context):
             result = response.json()['choices'][0]['message']['content'].strip().upper()
             if 'UNSAFE' in result:
                 await context.bot.ban_chat_member(chat_id, user.id)
-                await context.bot.send_message(chat_id, f"\ud83d\udeab @{user.username or user.first_name} banned - inappropriate profile picture.")
+                keyboard = [[InlineKeyboardButton("\ud83d\udd13 Unban (Admins Only)", callback_data=f"unban_{user.id}_{user.username or user.first_name}")]]
+                reply_markup = InlineKeyboardMarkup(keyboard)
+                await context.bot.send_message(chat_id, f"\ud83d\udeab @{user.username or user.first_name} banned - inappropriate profile picture.", reply_markup=reply_markup)
                 print(f"\ud83d\udeab Banned {user.first_name} for NSFW profile picture")
                 return True
             else:
