@@ -1003,10 +1003,8 @@ async def start_quiz(context, quiz_time="morning"):
                 parse_mode='Markdown'
             )
 
-        # Send all 5 questions at once
-        for i in range(1, 6):
-            await send_quiz_question(context, i)
-            await asyncio.sleep(2)  # 2 seconds between questions
+        # Generate all 5 questions in one AI call
+        await send_all_quiz_questions(context, TARGET_CHAT_ID, category, "bilingual")
 
         # Schedule quiz result after 1 hour
         asyncio.create_task(schedule_quiz_result(context))
@@ -1015,6 +1013,117 @@ async def start_quiz(context, quiz_time="morning"):
 
     except Exception as e:
         print(f"❌ [QUIZ START] Error starting {quiz_time} quiz: {e}")
+        import traceback
+        traceback.print_exc()
+
+async def send_all_quiz_questions(context, chat_id, category, lang_mode="bilingual"):
+    """Generate all 5 questions in one API call and send as polls"""
+    try:
+        if lang_mode == "bilingual":
+            prompt = f"""Generate 5 unique quiz questions for {category}.
+
+Format EXACTLY for each question:
+Q1: [English] | [Tamil]
+A) [English] | [Tamil]
+B) [English] | [Tamil]
+C) [English] | [Tamil]
+D) [English] | [Tamil]
+Answer: [A/B/C/D]
+
+Q2: ...
+(continue for all 5)
+
+Rules:
+- Each question MUST be under 150 chars
+- Each option MUST be under 70 chars
+- All 5 questions must be DIFFERENT
+- Must be factually correct
+- Only one correct answer per question"""
+        else:
+            prompt = f"""Generate 5 unique quiz questions for {category}.
+
+Format EXACTLY for each question:
+Q1: [Question in English]
+A) [Option]
+B) [Option]
+C) [Option]
+D) [Option]
+Answer: [A/B/C/D]
+
+Q2: ...
+(continue for all 5)
+
+Rules:
+- Each question MUST be under 200 chars
+- Each option MUST be under 80 chars
+- All 5 questions must be DIFFERENT
+- English only
+- Must be factually correct
+- Only one correct answer per question"""
+
+        response = get_ai_response(prompt, chat_session, ai_type)
+        print(f"Quiz AI response ({lang_mode}): {response[:200]}...")
+
+        # Parse all 5 questions
+        questions = []
+        current_q = {"text": "", "options": [], "answer": 0}
+        
+        for line in response.split('\n'):
+            line = line.strip()
+            if not line:
+                continue
+            if line.startswith(('Q1:', 'Q2:', 'Q3:', 'Q4:', 'Q5:')):
+                if current_q["text"] and len(current_q["options"]) == 4:
+                    questions.append(current_q)
+                current_q = {"text": line[3:].strip(), "options": [], "answer": 0}
+            elif line.startswith('A)'):
+                current_q["options"].append(line[2:].strip())
+            elif line.startswith('B)'):
+                current_q["options"].append(line[2:].strip())
+            elif line.startswith('C)'):
+                current_q["options"].append(line[2:].strip())
+            elif line.startswith('D)'):
+                current_q["options"].append(line[2:].strip())
+            elif 'Answer:' in line:
+                ans = line.split(':')[-1].strip().upper()[0]
+                current_q["answer"] = {'A': 0, 'B': 1, 'C': 2, 'D': 3}.get(ans, 0)
+        
+        # Don't forget the last question
+        if current_q["text"] and len(current_q["options"]) == 4:
+            questions.append(current_q)
+
+        # Send each question as a poll
+        for i, q in enumerate(questions[:5]):
+            poll_question = f"\u2753 Q{i+1}/5: {q['text']}"
+            if len(poll_question) > 290:
+                poll_question = q['text'][:280] + "..."
+            
+            truncated_options = [opt[:87] + "..." if len(opt) > 90 else opt for opt in q['options']]
+            
+            poll_message = await context.bot.send_poll(
+                chat_id=chat_id,
+                question=poll_question,
+                options=truncated_options,
+                type='quiz',
+                correct_option_id=q['answer'],
+                is_anonymous=False
+            )
+            
+            # Store poll data for Tamil group
+            if chat_id == TARGET_CHAT_ID:
+                quiz_data['poll_data'][poll_message.poll.id] = {
+                    'question_num': i + 1,
+                    'correct_answer_index': q['answer'],
+                    'points': 2,
+                    'participants': {},
+                    'message_id': poll_message.message_id
+                }
+            
+            await asyncio.sleep(2)
+        
+        print(f"\u2705 All {len(questions[:5])} quiz questions sent to {chat_id}")
+    except Exception as e:
+        print(f"\u274c Error in send_all_quiz_questions: {e}")
         import traceback
         traceback.print_exc()
 
@@ -1334,6 +1443,92 @@ async def process_quiz_results(context):
     except Exception as e:
         print(f"Error processing quiz results: {e}")
 
+async def start_english_quiz(context, quiz_time="morning"):
+    """Start English-only quiz for @indianchatt"""
+    try:
+        print(f"\ud83c\udfaf [ENG QUIZ] Starting {quiz_time} English quiz")
+        category = random.choice(QUIZ_CATEGORIES)
+        
+        greeting_map = {"morning": "\ud83c\udf05 Morning Quiz Time!", "afternoon": "\u2600\ufe0f Afternoon Quiz!", "evening": "\ud83c\udf06 Evening Quiz!", "night": "\ud83c\udf19 Night Quiz!"}
+        greeting = greeting_map.get(quiz_time, "\ud83e\udde0 Quiz Time!")
+        
+        message = f"\ud83e\udde0 **{greeting}** \ud83e\udde0\n\n\ud83d\udcca **5 Questions for You!**\n\n\ud83c\udfaf **Category:** {category}\n\n\u23f0 Answer all 5 questions!\n\n\ud83d\udcdd Questions coming now..."
+        await context.bot.send_message(chat_id=INDIANCHATT_CHAT_ID, text=message, parse_mode='Markdown')
+        
+        await send_all_quiz_questions(context, INDIANCHATT_CHAT_ID, category, "english")
+
+
+
+        
+        print(f"\u2705 [ENG QUIZ] {quiz_time} English quiz sent")
+    except Exception as e:
+        print(f"\u274c [ENG QUIZ] Error: {e}")
+
+async def send_english_quiz_question(context, question_num, category):
+    """Send English-only quiz question to @indianchatt"""
+    try:
+        prompt = f"""Generate quiz question {question_num}/5 for {category}.
+
+Format EXACTLY:
+Q: [Question in English only]
+A) [Option]
+B) [Option]
+C) [Option]
+D) [Option]
+Answer: [A/B/C/D]
+
+Rules:
+- Question MUST be under 200 chars
+- Each option MUST be under 80 chars
+- English only
+- Must be factually correct
+- Only one correct answer"""
+
+        response = get_ai_response(prompt, chat_session, ai_type)
+        
+        lines = [l.strip() for l in response.split('\n') if l.strip()]
+        question_text = ""
+        options = []
+        correct_answer_index = 0
+
+        for line in lines:
+            if line.startswith('Q:'):
+                question_text = line[2:].strip()
+            elif line.startswith('A)'):
+                options.append(line[2:].strip())
+            elif line.startswith('B)'):
+                options.append(line[2:].strip())
+            elif line.startswith('C)'):
+                options.append(line[2:].strip())
+            elif line.startswith('D)'):
+                options.append(line[2:].strip())
+            elif 'Answer:' in line:
+                ans = line.split(':')[-1].strip().upper()[0]
+                correct_answer_index = {'A': 0, 'B': 1, 'C': 2, 'D': 3}.get(ans, 0)
+
+        if len(options) != 4 or not question_text:
+            question_text = f"Quiz Question {question_num}"
+            options = ["Option A", "Option B", "Option C", "Option D"]
+            correct_answer_index = 0
+
+        poll_question = f"\u2753 Q{question_num}/5: {question_text}"
+        if len(poll_question) > 290:
+            poll_question = question_text[:280] + "..."
+
+        truncated_options = [opt[:87] + "..." if len(opt) > 90 else opt for opt in options]
+
+        await context.bot.send_poll(
+            chat_id=INDIANCHATT_CHAT_ID,
+            question=poll_question,
+            options=truncated_options,
+            type='quiz',
+            correct_option_id=correct_answer_index,
+            is_anonymous=False
+        )
+        print(f"\u2705 [ENG QUIZ] Question {question_num} sent")
+    except Exception as e:
+        print(f"\u274c [ENG QUIZ] Error sending question {question_num}: {e}")
+
 async def show_daily_winners(context):
     try:
         if not quiz_data['daily_scores']:
@@ -1533,7 +1728,8 @@ update_message_ids = {}  # Store last update message ID for each chat
 recent_active_users = defaultdict(set)  # {chat_id: {user_ids}}
 
 # Multi-language poem configuration
-TARGET_CHAT_ID = -1001330326659  # Your group chat ID
+TARGET_CHAT_ID = -1001330326659  # Tamil group chat ID
+INDIANCHATT_CHAT_ID = "@indianchatt"  # English/International group
 
 # Language channels configuration
 LANGUAGE_CHANNELS = {
@@ -1543,11 +1739,11 @@ LANGUAGE_CHANNELS = {
         "script_name": "தமிழ்",
         "culture": "Tamil culture"
     },
-    "hindi": {
+    "english": {
         "channel_id": "@digitalstudioo",
-        "language_name": "Hindi",
-        "script_name": "हिंदी",
-        "culture": "Indian culture"
+        "language_name": "English",
+        "script_name": "English",
+        "culture": "International"
     }
 }
 
@@ -3817,11 +4013,11 @@ async def track_chat_member(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     chat_username = ""
                 
                 if 'indianchatt' in chat_username or 'digitalstudioo' in chat_username:
-                    # Hindi welcome
+                    # English welcome
                     welcome_messages = [
-                        f"🙏 नमस्ते @{user.username or user.first_name}!\n\n💐 हमारे ग्रुप में आपका स्वागत है! हम चाहते हैं कि आप यहाँ खुश रहें.\n\n🌟 ग्रुप नियमों का पालन करें, सबके साथ मिलजुल कर रहें! 🎉",
-                        f"🌺 प्यारे @{user.username or user.first_name}!\n\n🤗 हमारे परिवार में शामिल होने के लिए धन्यवाद! आपकी मौजूदगी हमारे लिए बहुत महत्वपूर्ण है.\n\n💫 सम्मान से बात करें, खुश रहें! 🎊",
-                        f"💐 स्वागत है @{user.username or user.first_name}!\n\n🌹 आपसे मिलकर खुशी हुई! यह एक अच्छा परिवार जैसा ग्रुप है.\n\n✨ सबका सम्मान करें, अच्छा समय बिताएं! 🙏",
+                        f"👋 Welcome @{user.username or user.first_name}!\n\n💐 We're happy to have you in our group! Hope you enjoy your time here.\n\n🌟 Please follow group rules and be respectful to everyone! 🎉",
+                        f"🌟 Hello @{user.username or user.first_name}!\n\n🤗 Thank you for joining our community! Your presence means a lot to us.\n\n💫 Be kind, have fun, and enjoy the conversations! 🎊",
+                        f"🌺 Hey @{user.username or user.first_name}!\n\n🌹 So glad to have you here! This is a friendly and welcoming group.\n\n✨ Respect everyone, follow the rules, and have a great time! 🙏",
                     ]
                 else:
                     # Tamil welcome (default)
@@ -4313,13 +4509,13 @@ async def send_daily_special_days(context):
                 print(f"❌ Error sending to {channel_id}: {e}")
 
         # Send to Hindi channels
-        hindi_message = f"🌅 **सुप्रभात!** 🌅\n\n📅 **{date_display}**\n\n{special_days}\n\n✨ सभी को शुभकामनाएं! ✨"
+        english_message = f"🌅 **Good Morning!** 🌅\n\n📅 **{date_display}**\n\n{special_days}\n\n✨ Have a blessed day! ✨"
         for channel_id in ["@digitalstudioo", "@indianchatt"]:
             try:
                 if special_day_image:
-                    await context.bot.send_photo(chat_id=channel_id, photo=special_day_image, caption=hindi_message, parse_mode='Markdown')
+                    await context.bot.send_photo(chat_id=channel_id, photo=special_day_image, caption=english_message, parse_mode='Markdown')
                 else:
-                    await context.bot.send_message(chat_id=channel_id, text=hindi_message, parse_mode='Markdown')
+                    await context.bot.send_message(chat_id=channel_id, text=english_message, parse_mode='Markdown')
                 print(f"✅ Special days sent to {channel_id}")
             except Exception as e:
                 print(f"❌ Error sending to {channel_id}: {e}")
@@ -4496,17 +4692,17 @@ async def generate_poem(language, topic):
         - Original and creative
 
         Please write only the Tamil poem, nothing else."""
-    elif language == "hindi":
-        prompt = f"""Write a beautiful, inspirational Hindi poem about {topic}.
+    elif language == "english":
+        prompt = f"""Write a beautiful, inspirational English poem about {topic}.
         The poem should be:
         - 4-6 lines long
         - Inspirational and uplifting
-        - In proper Hindi Devanagari script
+        - In English
         - About {topic}
         - Suitable for all ages
         - Original and creative
 
-        Please write only the Hindi poem, nothing else."""
+        Please write only the English poem, nothing else."""
 
     poem_text = get_ai_response(prompt, chat_session, ai_type)
 
@@ -4540,16 +4736,16 @@ async def generate_news_items(language, count=10):
         
         Make them current, relevant, and informative. Keep each headline under 100 characters.
         Write ONLY the news items, nothing else."""
-    elif language == "hindi":
-        prompt = f"""Generate {count} latest news headlines in Hindi for today. Include diverse categories like:
-        - विश्व समाचार (World News)
-        - प्रौद्योगिकी (Technology)
-        - खेल (Sports)
-        - मनोरंजन (Entertainment)
-        - व्यापार (Business)
+    elif language == "english":
+        prompt = f"""Generate {count} latest international news headlines in English for today. Include diverse categories like:
+        - World News
+        - Technology
+        - Sports
+        - Entertainment
+        - Business
         
         Format each news item as:
-        📰 [Category in Hindi]: [News headline in Hindi]
+        📰 [Category]: [News headline]
         
         Make them current, relevant, and informative. Keep each headline under 100 characters.
         Write ONLY the news items, nothing else."""
@@ -4589,14 +4785,14 @@ async def send_news_to_channel(context, language, news_text, time_of_day):
             greeting = "🌆 மாலை செய்திகள்"
             time_text = "மாலை"
         message = f"{greeting}\n\n📰 **இன்றைய {time_text} முக்கிய செய்திகள்** 📰\n\n{news_text}\n\n@tamil5 @tamil_digital\n\n📱 Stay informed! | தகவல் அறிந்திருங்கள்!"
-    elif language == "hindi":
+    elif language == "english":
         if time_of_day == "morning":
-            greeting = "🌅 सुबह की खबरें"
-            time_text = "सुबह"
+            greeting = "🌅 Morning News"
+            time_text = "morning"
         else:
-            greeting = "🌆 शाम की खबरें"
-            time_text = "शाम"
-        message = f"{greeting}\n\n📰 **आज की {time_text} मुख्य समाचार** 📰\n\n{news_text}\n\n@indianchatt @digitalstudioo\n\n📱 Stay informed! | सूचित रहें!"
+            greeting = "🌆 Evening News"
+            time_text = "evening"
+        message = f"{greeting}\n\n📰 **Today's {time_text} headlines** 📰\n\n{news_text}\n\n@indianchatt @digitalstudioo\n\n📱 Stay informed!"
     
     # Send to channel
     try:
@@ -4659,8 +4855,8 @@ async def send_poem_to_channel(context, language, topic, poem_text, current_hour
     topic_hindi = topic.split('|')[-1].strip() if '|' in topic else topic_english
     if language == "tamil":
         message = f"📝 **தமிழ் கவிதை - {topic_tamil} ({topic_english})** 📝\n\n{poem_text}\n\n@tamil5 @tamil_digital\n\n💫 Stay inspired! | உத்வேகம் பெறுங்கள்!"
-    elif language == "hindi":
-        message = f"📝 **हिंदी कविता - {topic_hindi} ({topic_english})** 📝\n\n{poem_text}\n\n@indianchatt @digitalstudioo\n\n💫 Stay inspired! | प्रेरित रहें!"
+    elif language == "english":
+        message = f"📝 **English Poem - {topic_english}** 📝\n\n{poem_text}\n\n@indianchatt @digitalstudioo\n\n💫 Stay inspired!"
 
     print(f"📝 [POEM SEND] Formatted message length: {len(message)} chars")
 
@@ -4896,6 +5092,19 @@ def setup_poem_scheduler_sync(application):
     async def evening_news_job(context):
         await send_daily_news(context, "evening")
 
+    # English quiz jobs for @indianchatt
+    async def eng_morning_quiz(context):
+        await start_english_quiz(context, "morning")
+
+    async def eng_afternoon_quiz(context):
+        await start_english_quiz(context, "afternoon")
+
+    async def eng_evening_quiz(context):
+        await start_english_quiz(context, "evening")
+
+    async def eng_night_quiz(context):
+        await start_english_quiz(context, "night")
+
     # Schedule morning news at 8 AM
     job_queue.run_daily(
         morning_news_job,
@@ -4914,12 +5123,19 @@ def setup_poem_scheduler_sync(application):
         name="evening_news"
     )
 
+    # Schedule English quizzes for @indianchatt
+    job_queue.run_daily(eng_morning_quiz, time=time(8, 0, 0, tzinfo=ist), days=(0,1,2,3,4,5,6), name="eng_morning_quiz")
+    job_queue.run_daily(eng_afternoon_quiz, time=time(12, 0, 0, tzinfo=ist), days=(0,1,2,3,4,5,6), name="eng_afternoon_quiz")
+    job_queue.run_daily(eng_evening_quiz, time=time(17, 0, 0, tzinfo=ist), days=(0,1,2,3,4,5,6), name="eng_evening_quiz")
+    job_queue.run_daily(eng_night_quiz, time=time(21, 0, 0, tzinfo=ist), days=(0,1,2,3,4,5,6), name="eng_night_quiz")
+
     print("📅 All schedulers activated!")
     print("⏰ Special Days: 7 AM | Quizzes: 8 AM, 12 PM, 5 PM, 9 PM")
     print("📰 News: 10 items at 8 AM & 6 PM daily (all languages)")
     print("📝 Multi-language Poems: 24 poems daily per language")
     print("   • Tamil: @tamil_digital")
-    print("   • Hindi: @digitalstudioo")
+    print("   • English: @digitalstudioo")
+    print("🧠 English Quizzes: @indianchatt (8 AM, 12 PM, 5 PM, 9 PM)")
     print("🏆 Rankings: Daily 11 PM | Weekly Sunday 10 PM | Monthly 1st 9 AM")
 
 async def handle_poll_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
